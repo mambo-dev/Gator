@@ -51,6 +51,7 @@ func main() {
 	commands.register("login", handlerLogin)
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
+	commands.register("users", handlerUsers)
 
 	args := os.Args
 
@@ -134,6 +135,32 @@ func handlerReset(s *state, cmd command) error {
 
 	log.Println("User table succesfully reset !")
 	return nil
+}
+
+func handlerUsers(s *state, cmd command) error {
+	dbQuery := s.db
+
+	users, err := dbQuery.GetUsers(context.Background())
+
+	if err != nil {
+		log.Fatalf("Failed to delete:\n - error: %v", err.Error())
+	}
+
+	currentlyLoggedInUser := s.config.CurrentUserName
+
+	for _, user := range users {
+
+		if user.Name == currentlyLoggedInUser {
+			fmt.Printf("* %v (current) \n", user.Name)
+
+		} else {
+			fmt.Printf("* %v \n", user.Name)
+		}
+
+	}
+
+	return nil
+
 }
 
 type commands struct {
