@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"gator/internal"
 	"gator/internal/database"
+	"html"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -52,6 +56,7 @@ func main() {
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
+	commands.register("agg", handlerAgg)
 
 	args := os.Args
 
@@ -160,6 +165,79 @@ func handlerUsers(s *state, cmd command) error {
 	}
 
 	return nil
+
+}
+
+func handlerAgg(s *state, cmd command) error {
+
+	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+
+	if err != nil {
+		return errors.New("could not read feed")
+	}
+
+	fmt.Println(feed)
+
+	return nil
+}
+
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+}
+
+func fetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
+	request, err := http.NewRequestWithContext(ctx, "GET", feedUrl, nil)
+
+	request.Header.Set("User-Agent", "gator")
+
+	if err != nil {
+		log.Fatalf("Error fetching feed: %v\n", err.Error())
+	}
+
+	resp, err := http.DefaultClient.Do(request)
+
+	if err != nil {
+		log.Fatalf("Error returning response: %v\n", err.Error())
+	}
+
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		log.Fatalf("Error reading body: %v\n", err.Error())
+	}
+
+	if resp.StatusCode > 299 {
+		log.Fatalf("Response failed with status code: %d and\nbody: %s\n", resp.StatusCode, body)
+	}
+
+	rssFeed := &RSSFeed{}
+
+	err = xml.Unmarshal(body, rssFeed)
+
+	if err != nil {
+		log.Fatalf("Failed to unmarshal xml: %v\n", err.Error())
+	}
+
+	html.UnescapeString(rssFeed.Channel.Title)
+	html.UnescapeString(rssFeed.Channel.Description)
+
+	rssFeed.Channel.Description = html.UnescapeString(rssFeed.Channel.Description)
+	rssFeed.Channel.Title = html.UnescapeString(rssFeed.Channel.Title)
+
+	return rssFeed, nil
 
 }
 
