@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -8,7 +9,9 @@ import (
 	"gator/internal/database"
 	"log"
 	"os"
+	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
 
@@ -46,6 +49,8 @@ func main() {
 	}
 
 	commands.register("login", handlerLogin)
+	commands.register("register", handlerRegister)
+	commands.register("reset", handlerReset)
 
 	args := os.Args
 
@@ -60,7 +65,7 @@ func main() {
 		arguments: commandArguments,
 	}
 
-	err := commands.run(&newState, command)
+	err = commands.run(&newState, command)
 
 	if err != nil {
 		log.Fatal(err.Error())
@@ -75,10 +80,59 @@ func handlerLogin(s *state, cmd command) error {
 
 	config := s.config
 
-	config.SetUser(cmd.arguments[0])
+	dbQuery := s.db
+
+	user, err := dbQuery.GetUser(context.Background(), cmd.arguments[0])
+
+	if err != nil {
+		log.Fatalf("User does not exist\n - error:%v\n", err.Error())
+	}
+
+	config.SetUser(user.Name)
 
 	fmt.Printf("username: %v successfully set\n", config.CurrentUserName)
 
+	return nil
+}
+
+func handlerRegister(s *state, cmd command) error {
+	if len(cmd.arguments) < 1 {
+		return errors.New("register handler expects a single argument, the username.")
+	}
+
+	config := s.config
+	dbQuery := s.db
+
+	newUser := database.CreateUserParams{
+		ID:        uuid.New(),
+		Name:      cmd.arguments[0],
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	user, err := dbQuery.CreateUser(context.Background(), newUser)
+
+	if err != nil {
+		log.Fatal("User already exists")
+	}
+
+	config.SetUser(user.Name)
+	fmt.Println("User was created")
+	fmt.Printf("username: %v successfully set\n", config.CurrentUserName)
+
+	return nil
+}
+
+func handlerReset(s *state, cmd command) error {
+	dbQuery := s.db
+
+	err := dbQuery.DeleteUsers(context.Background())
+
+	if err != nil {
+		log.Fatalf("Failed to delete:\n - error: %v", err.Error())
+	}
+
+	log.Println("User table succesfully reset !")
 	return nil
 }
 
@@ -87,6 +141,13 @@ type commands struct {
 }
 
 func (c *commands) register(name string, f func(*state, command) error) {
+
+	_, ok := c.commands[name]
+
+	if ok {
+		log.Fatal("command already registered")
+	}
+
 	c.commands[name] = f
 
 }
