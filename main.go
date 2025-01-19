@@ -58,6 +58,7 @@ func main() {
 	commands.register("users", handlerUsers)
 	commands.register("agg", handlerAgg)
 	commands.register("addfeed", handlerFeed)
+	commands.register("feeds", handlerFeeds)
 
 	args := os.Args
 
@@ -213,6 +214,24 @@ func handlerFeed(s *state, cmd command) error {
 	createdFeed, err := dbQuery.CreateFeed(context.Background(), newFeed)
 
 	fmt.Println(createdFeed)
+	return nil
+}
+
+func handlerFeeds(s *state, cmd command) error {
+	dbQuery := s.db
+
+	feeds, err := dbQuery.GetFeeds(context.Background())
+
+	if err != nil {
+		return errors.New("could not get feeds from db")
+	}
+
+	fmt.Println("Your feeds are:")
+
+	for _, feed := range feeds {
+		fmt.Printf("- name: %v\n - url: %v\n  - created by: %v\n", feed.FeedName, feed.Url, feed.UserName)
+	}
+
 	return nil
 }
 
