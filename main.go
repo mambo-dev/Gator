@@ -57,6 +57,7 @@ func main() {
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
 	commands.register("agg", handlerAgg)
+	commands.register("addfeed", handlerFeed)
 
 	args := os.Args
 
@@ -178,6 +179,40 @@ func handlerAgg(s *state, cmd command) error {
 
 	fmt.Println(feed)
 
+	return nil
+}
+
+func handlerFeed(s *state, cmd command) error {
+	if len(cmd.arguments) < 2 {
+		return errors.New("expecting two arguments")
+	}
+
+	dbQuery := s.db
+
+	currentUser, err := dbQuery.GetUser(context.Background(), s.config.CurrentUserName)
+
+	if err != nil {
+		return errors.New("user does not exist")
+	}
+
+	name := cmd.arguments[0]
+	url := cmd.arguments[1]
+
+	newFeed := database.CreateFeedParams{
+		ID:        uuid.New(),
+		Name:      name,
+		Url:       url,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UserID: uuid.NullUUID{
+			UUID:  currentUser.ID,
+			Valid: true,
+		},
+	}
+
+	createdFeed, err := dbQuery.CreateFeed(context.Background(), newFeed)
+
+	fmt.Println(createdFeed)
 	return nil
 }
 
