@@ -1,15 +1,20 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"gator/internal"
+	"gator/internal/database"
 	"log"
 	"os"
+
+	_ "github.com/lib/pq"
 )
 
 type state struct {
 	config *internal.Config
+	db     *database.Queries
 }
 
 type command struct {
@@ -20,8 +25,20 @@ type command struct {
 func main() {
 
 	config := internal.ReadGatorConfig()
+
+	dbUrl := config.DbUrl
+
+	db, err := sql.Open("postgres", dbUrl)
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	dbQueries := database.New(db)
+
 	newState := state{
 		config: config,
+		db:     dbQueries,
 	}
 
 	commands := commands{
