@@ -61,6 +61,7 @@ func main() {
 	commands.register("feeds", handlerFeeds)
 	commands.register("follow", middlewareLoggedIn(handlerFollow))
 	commands.register("following", middlewareLoggedIn(handlerFollowing))
+	commands.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 
 	args := os.Args
 
@@ -304,6 +305,29 @@ func handlerFollow(s *state, cmd command, user database.User) error {
 	}
 
 	fmt.Printf("%v feed follows has feed %v\n", feeds.UserName, feeds.FeedName)
+	return nil
+}
+
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+
+	if len(cmd.arguments) < 1 {
+		return errors.New("expecting an argument.")
+	}
+
+	dbQuery := s.db
+
+	err := dbQuery.DeleteFeedFollowForUser(context.Background(), database.DeleteFeedFollowForUserParams{
+		UserID: uuid.NullUUID{
+			UUID:  user.ID,
+			Valid: true,
+		},
+		Url: cmd.arguments[0],
+	})
+
+	if err != nil {
+		return fmt.Errorf("could not delete feed %v\n", err)
+	}
+
 	return nil
 }
 
