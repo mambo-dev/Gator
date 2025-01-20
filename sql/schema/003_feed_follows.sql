@@ -1,13 +1,14 @@
 -- +goose Up
-CREATE TABLE feeds (
+CREATE TABLE feed_follows(
     id uuid PRIMARY KEY,
+    feed_id uuid,
+    user_id uuid,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    name VARCHAR  NOT NULL,
-    url VARCHAR NOT NULL UNIQUE,
-    user_id uuid ,
+    UNIQUE (feed_id, user_id),
+    FOREIGN KEY (feed_id) REFERENCES feeds (id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
 -- +goose Down
-DROP TABLE feeds;
+DROP TABLE feed_follows;

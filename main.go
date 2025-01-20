@@ -57,8 +57,10 @@ func main() {
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
 	commands.register("agg", handlerAgg)
-	commands.register("addfeed", handlerFeed)
+	commands.register("addfeed", middlewareLoggedIn(handlerFeed))
 	commands.register("feeds", handlerFeeds)
+	commands.register("follow", middlewareLoggedIn(handlerFollow))
+	commands.register("following", middlewareLoggedIn(handlerFollowing))
 
 	args := os.Args
 
@@ -183,18 +185,12 @@ func handlerAgg(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFeed(s *state, cmd command) error {
+func handlerFeed(s *state, cmd command, user database.User) error {
 	if len(cmd.arguments) < 2 {
 		return errors.New("expecting two arguments")
 	}
 
 	dbQuery := s.db
-
-	currentUser, err := dbQuery.GetUser(context.Background(), s.config.CurrentUserName)
-
-	if err != nil {
-		return errors.New("user does not exist")
-	}
 
 	name := cmd.arguments[0]
 	url := cmd.arguments[1]
@@ -206,12 +202,31 @@ func handlerFeed(s *state, cmd command) error {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		UserID: uuid.NullUUID{
-			UUID:  currentUser.ID,
+			UUID:  user.ID,
 			Valid: true,
 		},
 	}
 
 	createdFeed, err := dbQuery.CreateFeed(context.Background(), newFeed)
+
+	if err != nil {
+		return errors.New("could not create feed")
+	}
+
+	_, err = dbQuery.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID: uuid.New(),
+		FeedID: uuid.NullUUID{
+			UUID:  createdFeed.ID,
+			Valid: true,
+		},
+		UserID:    createdFeed.UserID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
+
+	if err != nil {
+		return errors.New("failed to create user's feed follow")
+	}
 
 	fmt.Println(createdFeed)
 	return nil
@@ -232,6 +247,63 @@ func handlerFeeds(s *state, cmd command) error {
 		fmt.Printf("- name: %v\n - url: %v\n  - created by: %v\n", feed.FeedName, feed.Url, feed.UserName)
 	}
 
+	return nil
+}
+
+func handlerFollowing(s *state, cmd command, user database.User) error {
+	dbQuery := s.db
+
+	feedFollows, err := dbQuery.GetFeedFollowsForUser(context.Background(), uuid.NullUUID{
+		UUID:  user.ID,
+		Valid: true,
+	})
+
+	if err != nil {
+		return errors.New("could not get feed follows")
+	}
+
+	fmt.Printf("%v's feeds: \n", user.Name)
+
+	for _, feed := range feedFollows {
+		fmt.Printf("Name: %v \n", feed.FeedName)
+	}
+
+	return nil
+}
+
+func handlerFollow(s *state, cmd command, user database.User) error {
+
+	if len(cmd.arguments) < 1 {
+		return errors.New("expecting an argument.")
+	}
+
+	dbQuery := s.db
+
+	feed, err := dbQuery.GetFeed(context.Background(), cmd.arguments[0])
+
+	if err != nil {
+		return errors.New("could not get specified feed.")
+	}
+
+	feeds, err := dbQuery.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID: uuid.New(),
+		UserID: uuid.NullUUID{
+			UUID:  user.ID,
+			Valid: true,
+		},
+		FeedID: uuid.NullUUID{
+			UUID:  feed.ID,
+			Valid: true,
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
+
+	if err != nil {
+		return errors.New("could not get feeds from db")
+	}
+
+	fmt.Printf("%v feed follows has feed %v\n", feeds.UserName, feeds.FeedName)
 	return nil
 }
 
@@ -325,4 +397,21 @@ func (c *commands) run(s *state, cmd command) error {
 	}
 
 	return nil
+}
+
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
+
+	return func(s *state, c command) error {
+
+		dbQuery := s.db
+
+		user, err := dbQuery.GetUser(context.Background(), s.config.CurrentUserName)
+
+		if err != nil {
+			return errors.New("could not get logged in user.")
+		}
+
+		return handler(s, c, user)
+
+	}
 }
