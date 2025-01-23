@@ -6,8 +6,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"gator/internal"
-	"gator/internal/database"
 	"html"
 	"io"
 	"log"
@@ -18,6 +16,8 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
+	"github.com/mambo-dev/Gator/internal"
+	"github.com/mambo-dev/Gator/internal/database"
 )
 
 type state struct {
@@ -155,7 +155,7 @@ func handlerUsers(s *state, cmd command) error {
 	users, err := dbQuery.GetUsers(context.Background())
 
 	if err != nil {
-		log.Fatalf("Failed to delete:\n - error: %v", err.Error())
+		log.Fatalf("Failed to get users:\n - error: %v", err.Error())
 	}
 
 	currentlyLoggedInUser := s.config.CurrentUserName
