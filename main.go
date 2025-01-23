@@ -16,8 +16,8 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/mambo-dev/Gator/internal"
-	"github.com/mambo-dev/Gator/internal/database"
+	"github.com/mambo-dev/gator/internal"
+	"github.com/mambo-dev/gator/internal/database"
 )
 
 type state struct {
