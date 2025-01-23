@@ -4,7 +4,7 @@ You will need Postgres and Go installed to run the program
 
 ## Installation
 
-go install github.com/mambo-dev/Gator@latest
+go install github.com/mambo-dev/gator@latest
 
 ## Run
 

@@ -1,4 +1,4 @@
-module github.com/mambo-dev/Gator
+module github.com/mambo-dev/gator
 
 go 1.23.5
 
