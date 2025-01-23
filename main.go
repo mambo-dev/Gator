@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,12 +57,13 @@ func main() {
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
-	commands.register("agg", handlerAgg)
+	commands.register("agg", middlewareLoggedIn(handlerAgg))
 	commands.register("addfeed", middlewareLoggedIn(handlerFeed))
 	commands.register("feeds", handlerFeeds)
 	commands.register("follow", middlewareLoggedIn(handlerFollow))
 	commands.register("following", middlewareLoggedIn(handlerFollowing))
 	commands.register("unfollow", middlewareLoggedIn(handlerUnfollow))
+	commands.register("browse", handlerBrowse)
 
 	args := os.Args
 
@@ -173,17 +175,25 @@ func handlerUsers(s *state, cmd command) error {
 
 }
 
-func handlerAgg(s *state, cmd command) error {
+func handlerAgg(s *state, cmd command, user database.User) error {
 
-	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
-
-	if err != nil {
-		return errors.New("could not read feed")
+	if len(cmd.arguments) < 1 {
+		return errors.New("expecting one arguments")
 	}
 
-	fmt.Println(feed)
+	timeBetweenRequests, err := time.ParseDuration(cmd.arguments[0])
 
-	return nil
+	if err != nil {
+		log.Fatal("could not parse command")
+	}
+
+	ticker := time.NewTicker(timeBetweenRequests)
+	fmt.Printf("Collecting feeds every: %v \n", timeBetweenRequests)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
+		fmt.Println("Collecting feeds...")
+	}
+
 }
 
 func handlerFeed(s *state, cmd command, user database.User) error {
@@ -329,6 +339,89 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	}
 
 	return nil
+}
+
+func scrapeFeeds(s *state) bool {
+	nextFeed, err := s.db.GetNextFeedToFetch(context.Background())
+
+	if err != nil {
+		log.Fatalf("could not get next feed to fetch %v\n", err.Error())
+	}
+
+	err = s.db.MarkFeedFetched(context.Background(), nextFeed.ID)
+
+	if err != nil {
+		log.Fatalf("Failed to mark feed as fetched %v\n", err.Error())
+	}
+
+	feeds, err := fetchFeed(context.Background(), nextFeed.Url)
+
+	if err != nil {
+		log.Fatalf("could not fetch feed from url %v\n", err.Error())
+	}
+
+	for _, feed := range feeds.Channel.Item {
+
+		fmt.Println(feed.Title)
+
+		pubDate, err := time.Parse("2006-01-02", feed.PubDate)
+
+		if err != nil {
+			pubDate = time.Now()
+		}
+
+		_, err = s.db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:        uuid.New(),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Title:     feed.Title,
+			Url:       feed.Link,
+			Description: sql.NullString{
+				String: feed.Description,
+			},
+			PublishedAt: sql.NullTime{
+				Time:  pubDate,
+				Valid: true,
+			},
+			FeedID: nextFeed.ID,
+		})
+
+		if err != nil {
+			fmt.Printf("Failed to create post %v\n", err.Error())
+			continue
+		}
+
+	}
+
+	return true
+}
+
+func handlerBrowse(s *state, cmd command) error {
+	limit := 2
+	if len(cmd.arguments) >= 1 {
+		arg, err := strconv.Atoi(cmd.arguments[0])
+
+		if err != nil {
+			log.Fatalf("Invalid limit argument passed %v\n", err.Error())
+		}
+
+		limit = arg
+	}
+
+	fmt.Println(limit)
+	posts, err := s.db.GetPostsForUser(context.Background(), int32(limit))
+
+	if err != nil {
+
+		return errors.New(fmt.Sprintf("could not get posts %v\n", err.Error()))
+	}
+
+	for _, post := range posts {
+		fmt.Printf("Title: %v\nDescription: %v\nPublished at:%v\n", post.Title, post.Description.String, post.PublishedAt.Time.UTC().Format("2006-01-02"))
+	}
+
+	return nil
+
 }
 
 type RSSFeed struct {
